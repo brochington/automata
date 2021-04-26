@@ -11,7 +11,9 @@
     "esModuleInterop": true,
     "jsx": "react",
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "utils": ["src/utils"]
+    }
   },
   "include": [
     "src",
