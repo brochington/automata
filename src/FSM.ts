@@ -1,51 +1,103 @@
-export type State = string | number | symbol;
+import EventEmitter from 'eventemitter3';
+import { isFunction } from 'lodash';
+import { isIterable, isAsyncIterable, isGeneratorFunction, isAsyncGeneratorFunction } from 'utils'
 
-export type TransitionFuncArgs<S extends State, D> = {
-  data: D;
+export type TransitionFuncArgs<S extends string, D> = {
+  data: (nextData: D) => void;
   current: S;
   next: (nextState: S) => void;
 };
 
-export type TransitionFunc<S extends State, D> = (
-  args: TransitionFuncArgs<S, D>
-) => void;
+export type TransitionFunc<S extends string, D> = 
+  | { (args: TransitionFuncArgs<S, D>): void }
+  // | { (args: TransitionFuncArgs<S, D>): Promise<void> }
+  // | { (args: TransitionFuncArgs<S, D>): Generator };
 
-export type Transitions<S extends State, D = undefined> = Record<
-  S,
-  TransitionFunc<S, D>
->;
+export type TransitionEnterFuncArgs<S extends string, D> = {
+  // from
+  data: (nextData: D) => void;
+}
 
-export default class FSM<S extends State, D = undefined> {
-  current: S;
+export type TransitionEventFuncs<S extends string, D> = {
+  enter: () => {}
+  exit: () => {}
+  run: () => {}
+}
+
+export type Transitions<States extends string, D> = {
+  [key in States]: TransitionFunc<States, D> | TransitionEventFuncs<States, D>;
+}
+
+export type FSMConfig<S extends string, SS extends string, D> = {
+  initial: S;
+  final?: S;
+  transitions: Transitions<SS, D>;
+};
+
+export type InnerStates = 
+| 'idle'
+| 'transitioning' 
+
+export default class FSM<S extends string, D = undefined> extends EventEmitter {
+  private _current: S;
+  private _complete: boolean = false;
+  private _innerState: InnerStates = 'idle';
 
   inital: S;
 
   transitions: Transitions<S, D>;
 
-  constructor(initialState: S, transitions: Transitions<S, D>) {
-    this.inital = initialState;
-    this.current = initialState;
-    this.transitions = transitions;
+  _config: FSMConfig<S, S, D>;
+
+  constructor(config: FSMConfig<S, S, D>) {
+    super();
+
+    this.inital = config.initial;
+    this._current = config.initial;
+    this.transitions = config.transitions;
+    this._config = config;
   }
 
-  next(data: D): void {
-    if (this.transitions[this.current]) {
-      this.transitions[this.current]({
-        data,
-        current: this.current,
-        next: this._transitionNext,
-      });
-    }
+  get current(): S {
+    return this._current;
   }
 
-  _transitionNext = (nextState: S): void => {
-    this.current = nextState;
+  get complete(): boolean {
+    return this._complete;
+  }
+
+  next(data?: D): void {
+    this._transition();
   };
 
-  reset(): void {
-    this.current = this.inital;
+  async _transition() {
+    const transition = this.transitions[this.current];
+
+    if (isFunction(transition)) {
+      const transitionArgs = { 
+        next: (nextState: S) => {
+          this._current = nextState;
+        }
+      }
+
+      const result = transition(transitionArgs);
+
+      if (this._current === this._config.final) {
+        this._complete = true;
+      }
+
+      return;
+    }
+
+    // should be an object of event functions.
+    if (transition)
   }
 
+  reset(): void {
+    this._current = this.inital;
+  }
+
+  // maybe rename this to peek?
   is(checkState: S): boolean {
     return this.current === checkState;
   }
