@@ -1,18 +1,41 @@
 StateCharts are statemachines of statemachines. Basically a "higher level" of state.
 
+Can I use Staction to make the transitions basically actions?
+
+"data" could be a Proxy
+```typescript
+// getter
+const { stuff } = data;
+
+// setter
+data = { newStuff };
+```
 
 ```typescript
 const fsm1 = new FSM({
   initial: 'a',
+  final: 'c',
   data: { something: 'here' },
-  transitions: {
+  states: {
     a: ({ next, data }) => {
-      data({ something: 'else' });
-      // next('b', { something: 'else' }); // or this?
+      // Uses a setter proxy.
+      data = { something: 'else' };
+
       next('b');
     },
     b: ({ next, emit }) => next('c' || 'error');
-    error: ({ emit, data }) => emit('error', data());
+    c: {
+      enter: () => {},
+      // Can state be "diverted" in the exit function?
+      // Should it have access to next()?
+      exit: () => {},
+      // run "on" next state transition call.
+      run: () => {}
+    },
+    d: function* ({ next, data }) {
+      
+    },
+    error: ({ emit, data }) => emit('error', data);
   }
 });
 
