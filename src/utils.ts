@@ -6,13 +6,20 @@ export function isAsyncIterable(testSubject: object) {
   return typeof testSubject[Symbol.asyncIterator] === 'function';
 }
 
-export function isPromise(obj: any): boolean {
+export function isPromise<T>(obj: any): obj is Promise<T> {
   return (
     !!obj &&
     (typeof obj === 'object' || typeof obj === 'function') &&
     typeof obj.then === 'function'
   );
 }
+// export function isPromise(obj: any): boolean {
+//   return (
+//     !!obj &&
+//     (typeof obj === 'object' || typeof obj === 'function') &&
+//     typeof obj.then === 'function'
+//   );
+// }
 
 export function isGeneratorFunction(testSub: any): boolean {
   return testSub && typeof testSub.next === 'function' && isIterable(testSub);
