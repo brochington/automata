@@ -1,3 +1,4 @@
 import FSM from './FSM';
+import AsyncFSM from './AsyncFSM';
 
-export default { FSM };
+export default { FSM, AsyncFSM };

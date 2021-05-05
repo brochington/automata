@@ -1,12 +1,12 @@
 import { expect } from 'chai';
-import FSM from '../src/FSM';
+import AsyncFSM from '../src/AsyncFSM';
 import noop from 'lodash/noop';
 
 describe('FSM', () => {
   
   it('Can be created', () => {
     // type States = 'a' | 'b';
-    const fsm = new FSM({
+    const fsm = new AsyncFSM({
       initial: 'a',
       data: {
         something: "here"
@@ -20,11 +20,11 @@ describe('FSM', () => {
       },
     });
 
-    expect(fsm).to.be.an.instanceof(FSM);
+    expect(fsm).to.be.an.instanceof(AsyncFSM);
   });
 
-  it.only('Cycles through standard transitions', () => {
-    const fsm = new FSM({
+  it('Cycles through standard transitions', async () => {
+    const fsm = new AsyncFSM({
       initial: 'a',
       final: 'c',
       transitions: {
@@ -37,18 +37,18 @@ describe('FSM', () => {
     expect(fsm.current).to.equal('a');
     expect(fsm.complete).to.equal(false);
 
-    fsm.next();
+    await fsm.next();
     expect(fsm.current).to.equal('b');
     expect(fsm.complete).to.equal(false);
 
-    fsm.next();
+    await fsm.next();
     expect(fsm.current).to.equal('c');
     expect(fsm.complete).to.equal(true);
   });
 
-  it('Updates data through normal transitions', () => {
+  it('Updates data through normal transitions', async () => {
 
-    const fsm = new FSM({
+    const fsm = new AsyncFSM({
       initial: 'a',
       final: 'c',
       data: {
@@ -70,17 +70,17 @@ describe('FSM', () => {
     expect(fsm.data.count).to.equal(0);
     expect(fsm.complete).to.equal(false);
 
-    fsm.next();
+    await fsm.next();
     expect(fsm.data.count).to.equal(1);
     expect(fsm.complete).to.equal(false);
 
-    fsm.next();
+    await fsm.next();
     expect(fsm.data.count).to.equal(2);
     expect(fsm.complete).to.equal(true);
   });
 
   it('can take async function types', async () => {
-    const fsm = new FSM({
+    const fsm = new AsyncFSM({
       initial: 'a',
       final: 'c',
       transitions: {
@@ -109,7 +109,7 @@ describe('FSM', () => {
   });
 
   it('can take async function types', async () => {
-    const fsm = new FSM({
+    const fsm = new AsyncFSM({
       initial: 'a',
       final: 'c',
       transitions: {

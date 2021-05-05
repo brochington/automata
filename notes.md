@@ -52,3 +52,26 @@ const fsm2 = new FSM({
 }).monitor(fsm1)
 
 ```
+
+## Async 
+
+```typescript
+const fsm = new FSM({
+  initial: 'a',
+  final: 'c',
+  data: {
+    count: 0,
+  },
+  transitions: {
+    a: ({ next, data }) => {
+      data({ count: 1 });
+      next('b');
+    },
+    b: ({ next, data }) => {
+      data({ count: 2 });
+      next('c');
+    },
+    c: () => {},
+  },
+});
+```
