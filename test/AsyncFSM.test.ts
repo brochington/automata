@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import AsyncFSM from '../src/AsyncFSM';
 import noop from 'lodash/noop';
 
-describe('FSM', () => {
+describe('AsyncFSM', () => {
   
   it('Can be created', () => {
     // type States = 'a' | 'b';
@@ -41,6 +41,11 @@ describe('FSM', () => {
     expect(fsm.current).to.equal('b');
     expect(fsm.complete).to.equal(false);
 
+    await fsm.next();
+    expect(fsm.current).to.equal('c');
+    expect(fsm.complete).to.equal(true);
+
+    // Make sure that the state stays at 'c'.
     await fsm.next();
     expect(fsm.current).to.equal('c');
     expect(fsm.complete).to.equal(true);
