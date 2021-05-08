@@ -1,41 +1,20 @@
 StateCharts are statemachines of statemachines. Basically a "higher level" of state.
 
-Can I use Staction to make the transitions basically actions?
 
-"data" could be a Proxy
-```typescript
-// getter
-const { stuff } = data;
-
-// setter
-data = { newStuff };
-```
+### Possible example of events bubbling up through different machines.
 
 ```typescript
 const fsm1 = new FSM({
   initial: 'a',
-  final: 'c',
   data: { something: 'here' },
-  states: {
+  transitions: {
     a: ({ next, data }) => {
-      // Uses a setter proxy.
-      data = { something: 'else' };
-
+      data({ something: 'else' });
+      // next('b', { something: 'else' }); // or this?
       next('b');
     },
     b: ({ next, emit }) => next('c' || 'error');
-    c: {
-      enter: () => {},
-      // Can state be "diverted" in the exit function?
-      // Should it have access to next()?
-      exit: () => {},
-      // run "on" next state transition call.
-      run: () => {}
-    },
-    d: function* ({ next, data }) {
-      
-    },
-    error: ({ emit, data }) => emit('error', data);
+    error: ({ emit, data }) => emit('error', data());
   }
 });
 
@@ -49,29 +28,44 @@ const fsm2 = new FSM({
       }
     }
   }
-}).monitor(fsm1)
+}).watch(fsm1)
+
+const fsm3 = new FSM({
+  initial: 'a',
+  transitions: {
+    a: async () => {
+      // do something async.
+      next('b');
+    }
+  }
+})
 
 ```
 
-## Async 
+## Generator transition functions
+
+Would be super cool to have a generator just run all the time....like a machine.
 
 ```typescript
-const fsm = new FSM({
+const genFSM = new AsyncFSM({
   initial: 'a',
-  final: 'c',
-  data: {
-    count: 0,
-  },
+  data: { count: 0 },
   transitions: {
-    a: ({ next, data }) => {
-      data({ count: 1 });
-      next('b');
-    },
-    b: ({ next, data }) => {
-      data({ count: 2 });
-      next('c');
-    },
-    c: () => {},
-  },
+    a: function* ({ data }) {
+      data(({ count }) => ({ count: count + 1 }));
+
+      if (data().count === 10) return;
+
+      yield;
+    }
+  }
 });
+
+genFSM.on('transitionend', () => {
+  console.log('transition has ended!!');
+})
+
+genFSM.next();
+
+
 ```

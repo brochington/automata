@@ -1,8 +1,8 @@
-export function isIterable(testSubject: object): boolean {
+export function isIterable<T>(testSubject: object): testSubject is Iterable<T> {
   return typeof testSubject[Symbol.iterator] === 'function';
 }
 
-export function isAsyncIterable(testSubject: object) {
+export function isAsyncIterable<T>(testSubject: object): testSubject is AsyncIterable<T> {
   return typeof testSubject[Symbol.asyncIterator] === 'function';
 }
 
@@ -21,11 +21,11 @@ export function isPromise<T>(obj: any): obj is Promise<T> {
 //   );
 // }
 
-export function isGeneratorFunction(testSub: any): boolean {
+export function isGeneratorFunction(testSub: any): testSub is Generator {
   return testSub && typeof testSub.next === 'function' && isIterable(testSub);
 }
 
-export function isAsyncGeneratorFunction(testSub: any): boolean {
+export function isAsyncGeneratorFunction(testSub: any): testSub is AsyncGenerator {
   return (
     testSub && typeof testSub.next === 'function' && isAsyncIterable(testSub)
   );
