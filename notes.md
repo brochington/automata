@@ -1,6 +1,5 @@
 StateCharts are statemachines of statemachines. Basically a "higher level" of state.
 
-
 ### Possible example of events bubbling up through different machines.
 
 ```typescript
@@ -32,10 +31,27 @@ const fsm2 = new FSM({
 
 const fsm3 = new FSM({
   initial: 'a',
-  transitions: {
-    a: async () => {
-      // do something async.
-      next('b');
+  states: {
+    first: {
+      enter: [errorGuard, () => {}]
+      // Add some kind of composition for middleware.
+      // How would this be short-circuited? maybe a continue() method?
+      on: [errorGuard, async () => {
+        // do something async.
+        next('second');
+      }],
+      exit: () => {}
+    },
+    second: {
+      on: () => {}
+    }
+  },
+  middleware: {
+    beforeAll: () => {
+      // Done before any state "on" call.
+    },
+    afterAll: () => {
+
     }
   }
 })
@@ -57,15 +73,13 @@ const genFSM = new AsyncFSM({
       if (data().count === 10) return;
 
       yield;
-    }
-  }
+    },
+  },
 });
 
 genFSM.on('transitionend', () => {
   console.log('transition has ended!!');
-})
+});
 
 genFSM.next();
-
-
 ```
