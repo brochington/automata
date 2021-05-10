@@ -24,21 +24,37 @@ export type TransitionFuncArgs<S extends string, D> = {
   data: DataFunc<D>;
   current: S;
   next: (nextState: S) => void;
-  from: any,
-  emit: <P>(eventName: string, payload?: P) => void,
+  complete: () => void;
+  from: any;
+  emit: <P>(eventName: string, payload?: P) => void;
 };
 
 export type TransitionFunc<S extends string, D> = {
   (args: TransitionFuncArgs<S, D>): TransitionResult;
 };
 
-export type Transitions<S extends string, D> = {
-  [key in S]: TransitionFunc<S, D>;
+export type StateObj<S extends string, D> = {
+  enter?: EnterFunc<S, D>;
+  on?: TransitionFunc<S, D>;
+  exit?: ExitFunc<S, D>;
+  // next?: S, // TODO!!
+  final?: boolean,
+};
+
+export function isStateObj<S extends string, D>(
+  maybeStateObj: any
+): maybeStateObj is StateObj<S, D> {
+  return typeof maybeStateObj === 'object';
+}
+
+export type States<S extends string, D> = {
+  [key in S]: StateObj<S, D> | TransitionFunc<S, D> | { next: S }
 };
 
 // Exit Functions
 export type ExitFuncArgs<S extends string, D> = {
   data: DataFunc<D>;
+  previousState: S;
   nextState: S;
 };
 
@@ -60,6 +76,7 @@ export function isExitFunc<S extends string, D>(
 export type EnterFuncArgs<S extends string, D> = {
   data: DataFunc<D>;
   previousState: S;
+  nextState: S;
 };
 
 export type EnterFunc<S extends string, D> = (
@@ -78,9 +95,8 @@ export function isEnterFunc<S extends string, D>(
 
 export type FSMConfig<S extends string, D> = {
   initial: NoInfer<S>;
-  final?: NoInfer<S>;
   data?: D;
-  transitions: Transitions<S, D>;
+  states: States<S, D>;
   enter?: EnterEvents<S, D>;
   exit?: ExitEvents<S, D>;
 };
@@ -94,36 +110,29 @@ export function isTransitionFunc<S extends string, D>(
   return typeof maybeFunc === 'function';
 }
 
-export default class AsyncFSM<S extends string, D> extends EventEmitter {
+export default class AsyncFSM<S extends string, D = unknown> extends EventEmitter {
   private _current: S;
   private _complete: boolean = false;
   private _innerState: InnerStates = 'idle';
 
   inital: S;
 
-  private _final: S | null;
-
   private _data: D | undefined;
 
-  private _transitions: Transitions<S, D>;
-
-  private _enter: EnterEvents<S, D>;
-
-  private _exit: ExitEvents<S, D>;
+  private _states: States<S, D>;
 
   _config: FSMConfig<S, D>;
+
+  // Static helper methods
 
   constructor(config: FSMConfig<S, D>) {
     super();
 
     this.inital = config.initial;
     this._current = config.initial;
-    this._transitions = config.transitions;
-    this._enter = config.enter || {};
-    this._exit = config.exit || {};
+    this._states = config.states;
     this._config = config;
     this._data = config.data;
-    this._final = config.final ?? null;
   }
 
   get current(): S {
@@ -153,67 +162,85 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
 
   private async _runCurrentTransition() {
     this._innerState = 'transitioning';
-    const currentTransition = this._transitions[this._current];
-    
-    if (isTransitionFunc<S, D>(currentTransition)) {
-      const transitionArgs = {
-        current: this._current,
-        next: async (nextState: S) => {
-          const previousState = this._current;
+    const currentState = this._states[this._current];
+    const transitionArgs = {
+      current: this._current,
+      next: (nextState: S) => {
+        if (this._complete) return;
+        
+        this._current = nextState;
+        
+        const currentState = this._states[this._current];
 
-          await this._runExit(nextState);
+        if (isStateObj(currentState) && currentState.final) {
+          this._complete = true;
+        }
+      },
+      data: this._setData.bind(this),
+      emit: <P>(event: string, payload?: P) => {
+        this.emit('emit', { event, payload });
+      },
+      from: () => {}, // unimplemented!
+      complete: () => {
+        this._complete = true;
+      }
+    };
 
-          this._current = nextState;
+    let result;
+    const preOnState = this._current;
 
-          // QUESTION: Should this be pre or post enter function call?
-          if (this._current === this._final) {
-            this._complete = true;
-          }
+    // Just the function
+    if (isTransitionFunc<S, D>(currentState)) {
+      result = currentState(transitionArgs);
+    }
 
-          await this._runEnter(previousState);
-        },
-        data: this._setData.bind(this),
-        emit: <P>(event: string, payload?: P) => {
-          this.emit('emit', { event, payload });
-        },
-        from: () => { } // unimplemented!
-      };
+    // the whole object.
+    if (isStateObj<S, D>(currentState) && currentState.on) {
+      result = currentState.on(transitionArgs);
+    }
 
-      const result = currentTransition(transitionArgs);
+    await this._handleTransitionResult(result);
 
-      await this._handleTransitionResult(result);
+    // NOTE: For now both the exit and enter calls happen AFTER
+    //       the "on" call, due to async ordering issues.
+    //       Not sure if this will stay like this.
+    if (this._current !== preOnState) {
+      await this._runExit(preOnState, this._current);
+      await this._runEnter(preOnState, this._current);
+    }
 
-      this._innerState = 'idle';
+    this._innerState = 'idle';
+  }
+
+  private async _runExit(prevStateKey: S, nextStateKey: S) {
+    const currentState = this._states[prevStateKey];
+
+    if (isStateObj<S, D>(currentState)) {
+      if (isExitFunc(currentState.exit)) {
+        const result = currentState.exit({
+          data: this._setData.bind(this),
+          previousState: prevStateKey,
+          nextState: nextStateKey,
+        });
+
+        await this._handleTransitionResult(result);
+      }
     }
   }
 
-  private async _runExit(nextState: S) {
-    const currentTransition = this._transitions[this._current];
-    const nextTransition = this._transitions[nextState];
-    const currentExit = this._exit[this._current];
+  private async _runEnter(prevStateKey: S, nextStateKey: S) {
+    const nextState = this._states[this._current];
 
-    if (isExitFunc(currentExit)) {
-      const result = currentExit({
-        data: this._setData.bind(this),
-        nextState,
-      });
+    if (isStateObj<S, D>(nextState)) {
+      if (isEnterFunc(nextState.enter)) {
+        const result = nextState.enter({
+          data: this._setData.bind(this),
+          previousState: prevStateKey,
+          nextState: nextStateKey,
+        });
 
-      await this._handleTransitionResult(result);
-    }
-  }
-
-  private async _runEnter(previousState: S) {
-    const currentTransition = this._transitions[previousState];
-    const nextTransition = this._transitions[this._current];
-    const nextEnter = this._enter[this._current];
-
-    if (isEnterFunc(nextEnter)) {
-      const result = nextEnter({
-        data: this._setData.bind(this),
-        previousState,
-      });
-
-      await this._handleTransitionResult(result);
+        await this._handleTransitionResult(result);
+      }
     }
   }
 
@@ -229,12 +256,17 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
   }
 
   private async _handleTransitionResult(result: TransitionResult) {
+    // console.log('result!', result);
     if (!result) {
       return;
     }
 
     if (isPromise(result)) {
-      await result;
+      try {
+        await result;
+      } catch (err) {
+        console.error('_handleTransitionResult', err);
+      }
     } else if (isGeneratorFunction(result)) {
       for (const g of result) {
         // Question: What should I do here, if anything?

@@ -2,6 +2,8 @@ StateCharts are statemachines of statemachines. Basically a "higher level" of st
 
 ### Possible example of events bubbling up through different machines.
 
+#### How best to have inter machine communication? This is why XState uses Actors?
+
 ```typescript
 const fsm1 = new FSM({
   initial: 'a',
@@ -36,6 +38,7 @@ const fsm3 = new FSM({
       enter: [errorGuard, () => {}]
       // Add some kind of composition for middleware.
       // How would this be short-circuited? maybe a continue() method?
+      // Maybe an abort() method that uses AbortController?
       on: [errorGuard, async () => {
         // do something async.
         next('second');
@@ -47,11 +50,18 @@ const fsm3 = new FSM({
     }
   },
   middleware: {
-    beforeAll: () => {
+    beforeAny: () => {
       // Done before any state "on" call.
     },
-    afterAll: () => {
+    afterAny: () => {
 
+    }
+  },
+  events: {
+    watched: {
+      error: () => {
+        // do something with fsm that just emitted an 'error' event.
+      }
     }
   }
 })
