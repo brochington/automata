@@ -1,2 +1,2 @@
-# fsm
-A Finite State Machine
+# Automata
+A powerful async finite state machine.

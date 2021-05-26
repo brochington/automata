@@ -1,5 +1,6 @@
 const path = require('path');
 const webpack = require('webpack');
+const aliases = require('./aliases');
 
 const babelLoaderConfig = {
   loader: 'babel-loader',
@@ -32,7 +33,7 @@ module.exports = {
   mode: 'production',
   devtool: 'eval-source-map',
   resolve: {
-    // alias: { ...aliases },
+    alias: { ...aliases },
     extensions: ['.js', '.mjs', '.ts', '.tsx'],
   },
   module: {

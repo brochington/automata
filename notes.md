@@ -8,7 +8,7 @@ StateCharts are statemachines of statemachines. Basically a "higher level" of st
 const fsm1 = new FSM({
   initial: 'a',
   data: { something: 'here' },
-  transitions: {
+  states: {
     a: ({ next, data }) => {
       data({ something: 'else' });
       // next('b', { something: 'else' }); // or this?
@@ -21,15 +21,23 @@ const fsm1 = new FSM({
 
 const fsm2 = new FSM({
   initial: 'c'
-  transitions: {
+  states: {
     c: ({ from }) => {
       if (from('error')) {
         console.log(from.data)
         next('d');
       }
     }
+  },
+  events: {
+    error: () => {
+      // do something with fsm that just emitted an 'error' event.
+    }
   }
-}).watch(fsm1)
+})
+.watch(fsm1)
+// remove all event listeners
+// .unwatch(fsm1)
 
 const fsm3 = new FSM({
   initial: 'a',
@@ -49,21 +57,6 @@ const fsm3 = new FSM({
       on: () => {}
     }
   },
-  middleware: {
-    beforeAny: () => {
-      // Done before any state "on" call.
-    },
-    afterAny: () => {
-
-    }
-  },
-  events: {
-    watched: {
-      error: () => {
-        // do something with fsm that just emitted an 'error' event.
-      }
-    }
-  }
 })
 
 ```

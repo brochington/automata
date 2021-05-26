@@ -1,11 +1,11 @@
 import { expect } from 'chai';
-import AsyncFSM from '../src/AsyncFSM';
+import Automata from '../src/Automata';
 import noop from 'lodash/noop';
 import sinon from 'sinon';
 
-describe('AsyncFSM', () => {
+describe('Automata', () => {
   it('Can be created', () => {
-    const fsm = new AsyncFSM({
+    const fsm = new Automata({
       initial: 'a',
       data: {
         something: 'here',
@@ -16,11 +16,11 @@ describe('AsyncFSM', () => {
       },
     });
 
-    expect(fsm).to.be.an.instanceof(AsyncFSM);
+    expect(fsm).to.be.an.instanceof(Automata);
   });
 
   it('fsm.complete is correctly set', async () => {
-    const fsm = new AsyncFSM({
+    const fsm = new Automata({
       initial: 'a',
       states: {
         a: ({ next }) => next('b'),
@@ -40,7 +40,7 @@ describe('AsyncFSM', () => {
   });
 
   it('Cycles through standard transitions', async () => {
-    const fsm = new AsyncFSM({
+    const fsm = new Automata({
       initial: 'a',
       states: {
         a: ({ next }) => next('b'),
@@ -64,7 +64,7 @@ describe('AsyncFSM', () => {
 
   context('Data', () => {
     it('Updates data through normal transitions', async () => {
-      const fsm = new AsyncFSM({
+      const fsm = new Automata({
         initial: 'a',
         data: {
           count: 0,
@@ -94,7 +94,7 @@ describe('AsyncFSM', () => {
     });
 
     it('Updates data via fsm.next()', async () => {
-      const fsm = new AsyncFSM({
+      const fsm = new Automata({
         initial: 'a',
         data: 0,
         states: {
@@ -122,7 +122,7 @@ describe('AsyncFSM', () => {
     });
 
     it('Data is updated correctly through async and generator transitions', async () => {
-      const fsm = new AsyncFSM({
+      const fsm = new Automata({
         initial: 'a',
         data: 0,
         states: {
@@ -186,7 +186,7 @@ describe('AsyncFSM', () => {
 
   context('Async', () => {
     it('can take async function types', async () => {
-      const fsm = new AsyncFSM({
+      const fsm = new Automata({
         initial: 'a',
         states: {
           a: async ({ next }) => {
@@ -214,7 +214,7 @@ describe('AsyncFSM', () => {
   context('Generators', () => {
     context('generator transitions', () => {
       it('calls generator function until exausted', async () => {
-        const genFSM = new AsyncFSM({
+        const genFSM = new Automata({
           initial: 'a',
           data: 0,
           states: {
@@ -242,13 +242,9 @@ describe('AsyncFSM', () => {
     });
   });
 
-  context('Events', () => {
-
-  });
-
   context('Instance methods', () => {
-    it('fsm.monitor()', () => {
-      const fsm1 = new AsyncFSM({
+    it('fsm.watch()', () => {
+      const fsm1 = new Automata({
         initial: 'a',
         data: {
           something: 'here',
@@ -262,7 +258,7 @@ describe('AsyncFSM', () => {
         },
       });
 
-      const fsm2 = new AsyncFSM({
+      const fsm2 = new Automata({
         initial: 'aa',
         data: {
           something: 'here',
@@ -284,7 +280,7 @@ describe('AsyncFSM', () => {
     context('Enter', () => {
       it('Enter state function is called', async () => {
         const enterFake = sinon.fake();
-        const fsm = new AsyncFSM({
+        const fsm = new Automata({
           initial: 'a',
           data: [] as string[],
           states: {
@@ -310,7 +306,7 @@ describe('AsyncFSM', () => {
 
       it('Enter state can be async or generator function', async () => {
         const enterFake = sinon.fake();
-        const fsm = new AsyncFSM({
+        const fsm = new Automata({
           initial: 'a',
           data: [] as string[],
           states: {
@@ -352,7 +348,7 @@ describe('AsyncFSM', () => {
     context('Exit', () => {
       it('Exit state function is called', async () => {
         const exitFake = sinon.fake();
-        const fsm = new AsyncFSM({
+        const fsm = new Automata({
           initial: 'a',
           data: [] as string[],
           states: {
@@ -397,6 +393,44 @@ describe('AsyncFSM', () => {
 
         expect(exitFake.callCount).to.equal(2);
       });
+    });
+  });
+
+  context('Events', () => {
+    it('Listens to events that occur on a watched fsm instance', async () => {
+      const fake = sinon.fake();
+      const evtPayload = { something: 'here' }; 
+      const fsm1 = new Automata({
+        initial: 'a',
+        states: {
+          a: ({ emit }) => {
+            emit('fsm1Event', evtPayload);
+          }
+        },
+      });
+
+      const fsm2 = new Automata({
+        initial: 'aa',
+        states: {
+          aa: noop,
+        },
+        events: {
+          fsm1Event: ({ source, payload }) => {
+            console.log('source', source);
+            expect(source.id).to.equal(fsm1.id);
+            expect(payload).to.eql(evtPayload);
+            fake();
+          }
+        }
+      }).watch(fsm1);
+
+      await fsm1.next();
+
+      fsm2.unwatch(fsm1);
+
+      await fsm1.next();
+
+      expect(fake.callCount).to.equal(1);
     });
   });
 });

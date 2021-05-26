@@ -7,6 +7,7 @@ import {
   isAsyncGeneratorFunction,
   isPromise,
 } from 'utils';
+import { v4 as uuidv4 } from 'uuid';
 
 type NoInfer<T> = [T][T extends any ? 0 : never];
 
@@ -97,8 +98,7 @@ export type FSMConfig<S extends string, D> = {
   initial: NoInfer<S>;
   data?: D;
   states: States<S, D>;
-  enter?: EnterEvents<S, D>;
-  exit?: ExitEvents<S, D>;
+  events?: Record<string, <P>(evt: EmittedEvent) => void>
 };
 
 export type InnerStates = 'idle' | 'transitioning';
@@ -110,29 +110,43 @@ export function isTransitionFunc<S extends string, D>(
   return typeof maybeFunc === 'function';
 }
 
-export default class AsyncFSM<S extends string, D = unknown> extends EventEmitter {
+export type EmittedEvent<P = any> = {
+  source: AsyncFSM<any, unknown>, // uuid of source fsm.
+  event: string,
+  payload?: P,
+}
+
+export type WatchedFSM = {
+  events: {
+    emit: (emittedEvent: EmittedEvent) => void;
+    destroy: (EmittedEvent: EmittedEvent) => void;
+  }
+}
+
+export default class AsyncFSM<S extends string, D> extends EventEmitter {
+  private _id: string;
   private _current: S;
   private _complete: boolean = false;
   private _innerState: InnerStates = 'idle';
-
-  inital: S;
-
   private _data: D | undefined;
-
   private _states: States<S, D>;
+
+  private _watched: Map<string, WatchedFSM>;
 
   _config: FSMConfig<S, D>;
 
-  // Static helper methods
-
   constructor(config: FSMConfig<S, D>) {
     super();
-
-    this.inital = config.initial;
+    this._id = uuidv4();
     this._current = config.initial;
     this._states = config.states;
     this._config = config;
     this._data = config.data;
+    this._watched = new Map();
+  }
+
+  get id(): string {
+    return this._id;
   }
 
   get current(): S {
@@ -178,7 +192,13 @@ export default class AsyncFSM<S extends string, D = unknown> extends EventEmitte
       },
       data: this._setData.bind(this),
       emit: <P>(event: string, payload?: P) => {
-        this.emit('emit', { event, payload });
+        const emittedEvent: EmittedEvent = {
+          source: this as AsyncFSM<any, unknown>,
+          event,
+          payload,
+        }
+        
+        this.emit('emit', emittedEvent);
       },
       from: () => {}, // unimplemented!
       complete: () => {
@@ -279,7 +299,7 @@ export default class AsyncFSM<S extends string, D = unknown> extends EventEmitte
   }
 
   reset(): void {
-    this._current = this.inital;
+    this._current = this._config.initial;
   }
 
   // maybe rename this to peek?
@@ -287,13 +307,48 @@ export default class AsyncFSM<S extends string, D = unknown> extends EventEmitte
     return this.current === checkState;
   }
 
-  watch<SS extends string, DD>(fsmToMonitor: AsyncFSM<SS, DD>) {
-    fsmToMonitor.on('emit', ({ event, payload }) => {
-      console.log('emitt!!!!!!', event, payload);
-    });
+  watch<A extends AsyncFSM<any, any>>(fsmToWatch: A) {
+    const watched: WatchedFSM = {
+      events: {
+        emit: ({ source, event, payload }) => {
+          console.log('emitt???', source, event, payload);
 
-    // TODO: Add an destroy event that removes event handlers when child is destroyed.
+          // NOTE: Probably a better way to do this, but I'm lazy right now.
+          if (this._config && this._config.events && this._config.events[event]) {
+            this._config.events[event]({ source: fsmToWatch, event, payload });
+          }
+        },
+        destroy: ({ source }) => {
+          console.log('destroy shit.');
+
+          // TODO: Add an destroy event that removes event handlers when child is destroyed.
+          this.unwatch(fsmToWatch);
+        }
+      }
+    };
+
+    console.log('watched: ', watched);
+
+    fsmToWatch.on('emit', watched.events.emit);
+
+    fsmToWatch.on('destroy', watched.events.destroy)
+
+    this._watched.set(fsmToWatch.id, watched);
 
     return this;
+  }
+
+  unwatch<SS extends string, DD>(fsmToWatch: AsyncFSM<SS, DD>) {
+    const watched = this._watched.get(fsmToWatch.id);
+
+    if (watched) {
+      fsmToWatch.off('emit', watched.events.emit);
+      fsmToWatch.off('destroy', watched.events.destroy);
+      this._watched.delete(fsmToWatch.id);
+    }
+  }
+
+  destroy() {
+    this.emit('destroy');
   }
 }
