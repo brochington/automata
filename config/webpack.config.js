@@ -23,7 +23,7 @@ module.exports = {
   output: {
     filename: 'bundle.js',
     path: path.resolve(process.cwd(), 'dist'),
-    library: '@brochington/fsm',
+    library: '@brochington/automata',
     libraryTarget: 'umd',
     publicPath: '/static/',
     umdNamedDefine: true,
