@@ -311,8 +311,6 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
     const watched: WatchedFSM = {
       events: {
         emit: ({ source, event, payload }) => {
-          console.log('emitt???', source, event, payload);
-
           // NOTE: Probably a better way to do this, but I'm lazy right now.
           if (this._config && this._config.events && this._config.events[event]) {
             this._config.events[event]({ source: fsmToWatch, event, payload });
@@ -326,8 +324,6 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
         }
       }
     };
-
-    console.log('watched: ', watched);
 
     fsmToWatch.on('emit', watched.events.emit);
 

@@ -45,6 +45,10 @@ module.exports = function (config) {
       resolve: {
         alias: { ...aliases },
         extensions: ['.js', '.jsx', '.tsx', '.ts', '.json'],
+        fallback: {
+          "util": false
+          // "util": require.resolve("util")
+        }
       },
     },
 

@@ -1,3 +1,3 @@
-import AsyncFSM from './AsyncFSM';
+import AsyncFSM from './Automata';
 
 export default { AsyncFSM };

@@ -416,7 +416,6 @@ describe('Automata', () => {
         },
         events: {
           fsm1Event: ({ source, payload }) => {
-            console.log('source', source);
             expect(source.id).to.equal(fsm1.id);
             expect(payload).to.eql(evtPayload);
             fake();
