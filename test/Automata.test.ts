@@ -94,13 +94,14 @@ describe('Automata', () => {
     });
 
     it('Updates data via fsm.next()', async () => {
-      const fsm = new Automata({
+      const fsm = new Automata<'a' | 'b' | 'c', number, [number]>({
         initial: 'a',
         data: 0,
         states: {
-          a: ({ next, data }) => {
+          a: ({ next, data, args }) => {
             const count = data();
-            data(count + 1);
+            const added = args[0];
+            data(count + added);
             next('b');
           },
           b: ({ next, data }) => {
@@ -109,16 +110,16 @@ describe('Automata', () => {
             next('c');
           },
           c: noop,
-        },
+        }
       });
 
       expect(fsm.data).to.equal(0);
 
       await fsm.next(1);
-      expect(fsm.data).to.equal(2);
+      expect(fsm.data).to.equal(1);
 
-      await fsm.next(count => count + 1);
-      expect(fsm.data).to.equal(4);
+      await fsm.next(1);
+      expect(fsm.data).to.equal(2);
     });
 
     it('Data is updated correctly through async and generator transitions', async () => {
@@ -182,6 +183,38 @@ describe('Automata', () => {
       expect(fsm.current).to.equal('e');
       expect(fsm.data).to.equal(7);
     });
+
+    it("next() passes correct args when called", async () => {
+      type States = 'a' | 'b' | 'c';
+
+      const fsm = new Automata<States, unknown, [States]>({
+        initial: 'a',
+        states: {
+          a: ({ args, next }) => {
+            const [nextState] = args;
+            next(nextState)
+          },
+          b: ({ args, next }) => {
+            const [nextState] = args;
+            next(nextState)
+          },
+          c: noop,
+        }
+      });
+
+      expect(fsm.current).to.equal('a');
+      await fsm.next('b');
+
+      expect(fsm.current).to.equal('b');
+      await fsm.next('a');
+
+      expect(fsm.current).to.equal('a');
+      await fsm.next('c');
+
+      expect(fsm.current).to.equal('c');
+      await fsm.next('a');
+      expect(fsm.current).to.equal('c'); // should remain as 'c'
+    })
   });
 
   context('Async', () => {

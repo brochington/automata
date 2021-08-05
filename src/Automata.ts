@@ -15,41 +15,42 @@ export type DataSetterFunc<D> = (currentData: D | undefined) => D;
 export type DataFunc<D> = (nextData?: D | DataSetterFunc<D>) => D | undefined;
 
 // Transition Functions
-export type TransitionResult =
-  | void
-  | Promise<void>
+export type TransitionResult<T = void> =
+  | T
+  | Promise<T>
   | Generator
   | AsyncGenerator;
 
-export type TransitionFuncArgs<S extends string, D> = {
+export type TransitionFuncArgs<S extends string, D, NA extends [...any]> = {
   data: DataFunc<D>;
   current: S;
   next: (nextState: S) => void;
+  args: NA;
   complete: () => void;
   from: any;
   emit: <P>(eventName: string, payload?: P) => void;
 };
 
-export type TransitionFunc<S extends string, D> = {
-  (args: TransitionFuncArgs<S, D>): TransitionResult;
+export type TransitionFunc<S extends string, D, NA extends [...any]> = {
+  (args: TransitionFuncArgs<S, D, NA>): TransitionResult;
 };
 
-export type StateObj<S extends string, D> = {
+export type StateObj<S extends string, D, NA extends [...any]> = {
   enter?: EnterFunc<S, D>;
-  on?: TransitionFunc<S, D>;
+  on?: TransitionFunc<S, D, NA>;
   exit?: ExitFunc<S, D>;
   // next?: S, // TODO!!
-  final?: boolean,
+  final?: boolean;
 };
 
-export function isStateObj<S extends string, D>(
+export function isStateObj<S extends string, D, NA extends [...any]>(
   maybeStateObj: any
-): maybeStateObj is StateObj<S, D> {
+): maybeStateObj is StateObj<S, D, NA> {
   return typeof maybeStateObj === 'object';
 }
 
-export type States<S extends string, D> = {
-  [key in S]: StateObj<S, D> | TransitionFunc<S, D> | { next: S }
+export type States<S extends string, D, NA extends [...any]> = {
+  [key in S]: StateObj<S, D, NA> | TransitionFunc<S, D, NA> | { next: S };
 };
 
 // Exit Functions
@@ -94,48 +95,55 @@ export function isEnterFunc<S extends string, D>(
   return maybeEnterFunc && isFunction(maybeEnterFunc);
 }
 
-export type FSMConfig<S extends string, D> = {
+export type AutomataConfig<S extends string, D, NA extends [...any]> = {
   initial: NoInfer<S>;
   data?: D;
-  states: States<S, D>;
-  events?: Record<string, <P>(evt: EmittedEvent) => void>
+  args?: NA;
+  states: States<S, D, NA>;
+  events?: Record<string, <P>(evt: EmittedEvent) => void>;
 };
 
 export type InnerStates = 'idle' | 'transitioning';
 
 // Guard Functions
-export function isTransitionFunc<S extends string, D>(
+export function isTransitionFunc<S extends string, D, NA extends [...any]>(
   maybeFunc: any
-): maybeFunc is TransitionFunc<S, D> {
+): maybeFunc is TransitionFunc<S, D, NA> {
   return typeof maybeFunc === 'function';
 }
 
 export type EmittedEvent<P = any> = {
-  source: AsyncFSM<any, unknown>, // uuid of source fsm.
-  event: string,
-  payload?: P,
-}
+  source: Automata<any, unknown, [...any]>; // uuid of source fsm.
+  event: string;
+  payload?: P;
+};
 
 export type WatchedFSM = {
   events: {
     emit: (emittedEvent: EmittedEvent) => void;
     destroy: (EmittedEvent: EmittedEvent) => void;
-  }
-}
+  };
+};
 
-export default class AsyncFSM<S extends string, D> extends EventEmitter {
+export default class Automata<
+  S extends string,
+  D,
+  NA extends [...any]
+> extends EventEmitter {
   private _id: string;
   private _current: S;
   private _complete: boolean = false;
   private _innerState: InnerStates = 'idle';
   private _data: D | undefined;
-  private _states: States<S, D>;
+  private _states: States<S, D, NA>;
 
   private _watched: Map<string, WatchedFSM>;
 
-  _config: FSMConfig<S, D>;
+  _config: AutomataConfig<S, D, NA>;
 
-  constructor(config: FSMConfig<S, D>) {
+  private _actions: any;
+
+  constructor(config: AutomataConfig<S, D, NA>) {
     super();
     this._id = uuidv4();
     this._current = config.initial;
@@ -143,6 +151,8 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
     this._config = config;
     this._data = config.data;
     this._watched = new Map();
+
+    this._actions = {}; // TODO: Update this
   }
 
   get id(): string {
@@ -161,29 +171,26 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
     return this._data;
   }
 
-  async next(nextData?: D | DataSetterFunc<D>) {
-    if (arguments.length > 0) {
-      await this._setData(nextData);
-    }
-
+  // async next(nextData?: D | DataSetterFunc<D>) {
+  async next(...nextArgs: NA) {
     if (this._innerState === 'idle') {
-      await this._runCurrentTransition();
+      await this._runCurrentTransition(nextArgs);
     } else {
       console.error('Unable to transition when not in an idle state.');
       // maybe send some kind of event like "onidle"?
     }
   }
 
-  private async _runCurrentTransition() {
+  private async _runCurrentTransition(nextArgs: NA) {
     this._innerState = 'transitioning';
     const currentState = this._states[this._current];
     const transitionArgs = {
       current: this._current,
       next: (nextState: S) => {
         if (this._complete) return;
-        
+
         this._current = nextState;
-        
+
         const currentState = this._states[this._current];
 
         if (isStateObj(currentState) && currentState.final) {
@@ -191,31 +198,32 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
         }
       },
       data: this._setData.bind(this),
+      args: nextArgs,
       emit: <P>(event: string, payload?: P) => {
         const emittedEvent: EmittedEvent = {
-          source: this as AsyncFSM<any, unknown>,
+          source: this as Automata<any, unknown, [...any]>,
           event,
           payload,
-        }
-        
+        };
+
         this.emit('emit', emittedEvent);
       },
       from: () => {}, // unimplemented!
       complete: () => {
         this._complete = true;
-      }
+      },
     };
 
     let result;
     const preOnState = this._current;
 
     // Just the function
-    if (isTransitionFunc<S, D>(currentState)) {
+    if (isTransitionFunc<S, D, NA>(currentState)) {
       result = currentState(transitionArgs);
     }
 
     // the whole object.
-    if (isStateObj<S, D>(currentState) && currentState.on) {
+    if (isStateObj<S, D, NA>(currentState) && currentState.on) {
       result = currentState.on(transitionArgs);
     }
 
@@ -235,7 +243,7 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
   private async _runExit(prevStateKey: S, nextStateKey: S) {
     const currentState = this._states[prevStateKey];
 
-    if (isStateObj<S, D>(currentState)) {
+    if (isStateObj<S, D, NA>(currentState)) {
       if (isExitFunc(currentState.exit)) {
         const result = currentState.exit({
           data: this._setData.bind(this),
@@ -251,7 +259,7 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
   private async _runEnter(prevStateKey: S, nextStateKey: S) {
     const nextState = this._states[this._current];
 
-    if (isStateObj<S, D>(nextState)) {
+    if (isStateObj<S, D, NA>(nextState)) {
       if (isEnterFunc(nextState.enter)) {
         const result = nextState.enter({
           data: this._setData.bind(this),
@@ -276,7 +284,6 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
   }
 
   private async _handleTransitionResult(result: TransitionResult) {
-    // console.log('result!', result);
     if (!result) {
       return;
     }
@@ -307,34 +314,40 @@ export default class AsyncFSM<S extends string, D> extends EventEmitter {
     return this.current === checkState;
   }
 
-  watch<A extends AsyncFSM<any, any>>(fsmToWatch: A) {
+  watch<A extends Automata<any, any, any>>(fsmToWatch: A) {
     const watched: WatchedFSM = {
       events: {
         emit: ({ source, event, payload }) => {
           // NOTE: Probably a better way to do this, but I'm lazy right now.
-          if (this._config && this._config.events && this._config.events[event]) {
+          if (
+            this._config &&
+            this._config.events &&
+            this._config.events[event]
+          ) {
             this._config.events[event]({ source: fsmToWatch, event, payload });
           }
         },
         destroy: ({ source }) => {
-          console.log('destroy shit.');
+          console.log('destroy stuff.');
 
           // TODO: Add an destroy event that removes event handlers when child is destroyed.
           this.unwatch(fsmToWatch);
-        }
-      }
+        },
+      },
     };
 
     fsmToWatch.on('emit', watched.events.emit);
 
-    fsmToWatch.on('destroy', watched.events.destroy)
+    fsmToWatch.on('destroy', watched.events.destroy);
 
     this._watched.set(fsmToWatch.id, watched);
 
     return this;
   }
 
-  unwatch<SS extends string, DD>(fsmToWatch: AsyncFSM<SS, DD>) {
+  unwatch<SS extends string, DD, NNA extends [...any]>(
+    fsmToWatch: Automata<SS, DD, NNA>
+  ) {
     const watched = this._watched.get(fsmToWatch.id);
 
     if (watched) {
